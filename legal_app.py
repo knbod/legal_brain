@@ -1,91 +1,83 @@
 import streamlit as st
-from supabase import create_client, Client
+from supabase import create_client
+import time
 
-# --- 1. SETUP & CONNECTION ---
-st.set_page_config(page_title="Legal Brain Pro", layout="centered")
-st.title("⚖️ Digital Legal Brain (Cloud DB)")
+# --- SETUP ---
+st.set_page_config(page_title="Compliance Tracker", layout="centered")
 
-# Initialize connection to Supabase
-# We get the secrets from the Streamlit "Safe"
 @st.cache_resource
 def init_connection():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
+    except:
+        return None
 
-try:
-    supabase = init_connection()
-except Exception as e:
-    st.error("🚨 Connection failed! Did you save your Secrets in Streamlit?")
+supabase = init_connection()
+
+if not supabase:
+    st.error("🚨 Connection failed. Did you update Streamlit Secrets with the NEW keys?")
     st.stop()
 
-# --- 2. FETCH DATA FROM VAULT ---
-# Instead of reading CSV, we ask Supabase for the data
-def get_data():
-    # We fetch all rows from the 'legal_cases' table
-    response = supabase.table("legal_cases").select("*").execute()
-    return response.data
+# --- CONSTANTS ---
+# Paste your Tenant ID from Step 3 here!
+DEFAULT_TENANT_ID = "a8446e55-1a8c-477f-aed9-51998ab1e6cb" 
 
-# Load data into session state
-if "legal_db" not in st.session_state:
+# --- AUTH LOGIC ---
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+def login(email, password):
     try:
-        st.session_state["legal_db"] = get_data()
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        st.session_state["user"] = response.user
+        st.success("✅ Logged in!")
+        st.rerun()
     except Exception as e:
-        st.warning(f"Could not fetch data. Error: {e}")
-        st.session_state["legal_db"] = []
+        st.error(f"Error: {e}")
 
-# --- 3. SIDEBAR ---
-st.sidebar.header("🗄️ Data Management")
-if st.sidebar.button("🔄 Refresh Data"):
-    st.session_state["legal_db"] = get_data()
+def signup(email, password):
+    try:
+        response = supabase.auth.sign_up({"email": email, "password": password})
+        st.session_state["user"] = response.user
+        st.success("✅ Signed up! You are now logged in.")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+def logout():
+    supabase.auth.sign_out()
+    st.session_state["user"] = None
     st.rerun()
 
-# --- 4. TABS ---
-tab1, tab2 = st.tabs(["📊 Dashboard", "📝 Add New Case"])
-
-# TAB 1: DASHBOARD
-with tab1:
-    data = st.session_state["legal_db"]
-    if data and len(data) > 0:
-        st.write(f"**Total Cases in Vault:** {len(data)}")
-        for case in data:
-            # We use 'subject' and 'difficulty' from your database columns
-            with st.expander(f"{case.get('subject', 'No Subject')} ({case.get('difficulty', 'Unknown')})"):
-                st.markdown(f"**Q:** {case.get('question', 'No Question')}")
-                st.markdown(f"**A:** {case.get('answer', 'No Answer')}")
-    else:
-        st.info("The Vault is empty! Go to 'Add New Case' to create your first entry.")
-
-# TAB 2: ADD CASE (The Bank Deposit)
-with tab2:
-    st.header("Add New Entry")
+# --- THE APP ---
+if st.session_state["user"] is None:
+    # 🔒 LOGIN SCREEN
+    st.title("🚧 Site Compliance Login")
+    tab1, tab2 = st.tabs(["Log In", "Sign Up"])
     
-    # Form Inputs
-    new_sub = st.selectbox("Subject", ["Wills", "Property", "Contracts", "Family Law"])
-    new_diff = st.select_slider("Difficulty", options=["Easy", "Medium", "Hard"])
-    new_q = st.text_area("Question")
-    new_a = st.text_area("Answer")
-    
-    if st.button("💾 Save to Cloud Vault"):
-        if new_q and new_a:
-            # 1. Create the package
-            new_entry = {
-                "subject": new_sub,
-                "difficulty": new_diff,
-                "question": new_q,
-                "answer": new_a
-            }
+    with tab1:
+        email = st.text_input("Email", key="l_email")
+        password = st.text_input("Password", type="password", key="l_pass")
+        if st.button("Log In"):
+            login(email, password)
             
-            # 2. Send the armored truck to Supabase
-            try:
-                supabase.table("legal_cases").insert(new_entry).execute()
-                
-                # 3. Update local view
-                st.success("✅ Saved to Cloud Database!")
-                # Refresh data immediately so we see it
-                st.session_state["legal_db"] = get_data() 
-                st.rerun()
-            except Exception as e:
-                st.error(f"Bank Error: {e}")
-        else:
-            st.warning("Please fill in all fields.")
+    with tab2:
+        st.caption("Create a new account for testing")
+        new_email = st.text_input("Email", key="s_email")
+        new_pass = st.text_input("Password", type="password", key="s_pass")
+        if st.button("Sign Up"):
+            signup(new_email, new_pass)
+
+else:
+    # 🏗️ MAIN DASHBOARD (Restricted Area)
+    st.sidebar.button("Log Out", on_click=logout)
+    
+    st.title("🏗️ Compliance HQ")
+    st.write(f"Logged in as: **{st.session_state['user'].email}**")
+    st.info(f"Connected to Company ID: `{DEFAULT_TENANT_ID}`")
+    
+    st.divider()
+    st.header("Coming Next: The Importer")
+    st.caption("We are ready to add the 'Upload Excel' feature here.")
