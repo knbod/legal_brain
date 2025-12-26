@@ -5,7 +5,7 @@ import time
 import datetime
 import google.generativeai as genai
 
-# --- 1. CONFIGURATION & PROFESSIONAL UI ---
+# --- 1. CONFIGURATION ---
 st.set_page_config(
     page_title="Compliance HQ", 
     page_icon="🛡️", 
@@ -13,28 +13,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 PROFESSIONAL CSS FIXES
+# 🎨 PROFESSIONAL CSS (FIXED LABELS & REMOVED BLACK BOXES)
 professional_css = """
     <style>
-    /* 1. HIDE STREAMLIT FOOTER & MANAGE BUTTON (Aggressive) */
+    /* 1. HIDE MANAGE BUTTON & FOOTER (Aggressive) */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    div[data-testid="stToolbar"] {display: none !important;}
-    div[data-testid="stDecoration"] {display: none !important;}
-    div[data-testid="stStatusWidget"] {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="manage-app-button"] {display: none !important;}
     
-    /* 2. BACKGROUND & TEXT COLORS */
+    /* 2. BACKGROUND & TEXT */
     .stApp {
         background-color: #FFFFFF;
-        color: #111827; /* Dark Grey Text */
+        color: #111827;
     }
     
-    /* 3. FIX INVISIBLE LABELS (Force them to be dark) */
-    label, .stMarkdown p {
-        color: #374151 !important; /* Visible Dark Grey */
-        font-weight: 500;
-        font-size: 14px;
+    /* 3. FORCE LABELS TO BE VISIBLE (DARK GREY) */
+    label, p, .stMarkdown {
+        color: #374151 !important;
+        font-weight: 500 !important;
     }
     
     /* 4. INPUT FIELDS (Clean White) */
@@ -45,14 +43,12 @@ professional_css = """
         border-radius: 6px; 
     }
     
-    /* 5. FIX THE BLACK PASSWORD EYE ICON BOX */
-    /* This targets the container of the eye icon to make it white/transparent */
+    /* 5. REMOVE BLACK BOX ON PASSWORD ICON */
     button[aria-label="Show password"] {
         background-color: transparent !important;
-        color: #374151 !important; /* Dark Grey Icon */
+        color: #374151 !important;
         border: none !important;
     }
-    /* Fallback for different browser rendering of the toggle */
     [data-testid="stInputSecondary"] {
         background-color: transparent !important;
     }
@@ -63,7 +59,6 @@ professional_css = """
         border: none;
         color: white !important;
         border-radius: 6px;
-        padding: 10px 20px;
     }
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
@@ -72,25 +67,8 @@ professional_css = """
         border-radius: 6px;
     }
     
-    /* 7. HEADERS & TABS */
+    /* 7. HEADERS */
     h1, h2, h3 { color: #111827 !important; }
-    
-    .stTabs [data-baseweb="tab-list"] { 
-        gap: 10px; 
-        border-bottom: 1px solid #E5E7EB;
-        padding-bottom: 5px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #F3F4F6;
-        border: 1px solid #E5E7EB;
-        color: #4B5563;
-        border-radius: 6px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #20B2AA !important;
-        color: white !important;
-        border: none;
-    }
     </style>
 """
 st.markdown(professional_css, unsafe_allow_html=True)
@@ -170,32 +148,32 @@ def logout():
 
 # --- 4. APP INTERFACE ---
 
-# === AUTHENTICATION SCREEN ===
 if st.session_state["user"] is None:
-    # Centering the Login Box properly
+    # === LOGIN SCREEN (Centered & Clean) ===
     c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
-        st.image("[https://cdn-icons-png.flaticon.com/512/9634/9634157.png](https://cdn-icons-png.flaticon.com/512/9634/9634157.png)", width=60) # Simple Shield Icon
-        st.title("Compliance HQ")
-        st.write(" ") # Spacer
+        st.header("🛡️ Compliance HQ") # Use text/emoji instead of image to prevent crash
+        st.write("Secure Workforce Management")
+        st.divider()
         
         tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
         
         with tab_login:
-            l_email = st.text_input("Email", key="l_email", placeholder="name@company.com")
+            st.write(" ")
+            l_email = st.text_input("Email Address", key="l_email", placeholder="name@company.com")
             l_pass = st.text_input("Password", type="password", key="l_pass", placeholder="••••••••")
-            st.write("")
+            st.write(" ")
             if st.button("Log In", type="primary", use_container_width=True): login(l_email, l_pass)
             
         with tab_signup:
+            st.write(" ")
             s_email = st.text_input("Business Email", key="s_email", placeholder="name@company.com")
             s_pass = st.text_input("Create Password", type="password", key="s_pass", placeholder="Min 6 chars")
-            st.write("")
+            st.write(" ")
             if st.button("Create Account", type="primary", use_container_width=True): signup(s_email, s_pass)
 
-# === MAIN DASHBOARD ===
 else:
-    # Sidebar
+    # === MAIN DASHBOARD ===
     with st.sidebar:
         st.header("🛡️ HQ")
         st.caption(st.session_state['user'].email)
@@ -205,15 +183,14 @@ else:
     # Tabs
     tab_dash, tab_audit = st.tabs(["📊 Dashboard & Import", "🤖 AI Audit"])
 
-    # --- DASHBOARD & IMPORT ---
     with tab_dash:
-        # Metrics & Controls
+        # Overview
         c_head1, c_head2 = st.columns([3, 1])
         with c_head1: st.subheader("Overview")
         with c_head2: 
             safe_days = st.selectbox("Warning Threshold", [30, 60, 90], index=1, format_func=lambda x: f"{x} Days")
 
-        # Fetch Data
+        # Data Logic
         res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         df = pd.DataFrame(res.data) if res.data else pd.DataFrame(columns=["name", "insurance_expiry_date", "trade", "phone", "data_status"])
 
@@ -231,20 +208,20 @@ else:
         st.divider()
 
         # Import Section
-        with st.expander("📂 Import New Workers", expanded=False):
+        with st.expander("📂 Import New Workers", expanded=True):
             up_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"], label_visibility="collapsed")
             
             if up_file:
                 if up_file.name.endswith(".csv"): df_raw = pd.read_csv(up_file)
                 else: df_raw = pd.read_excel(up_file)
                 
-                st.markdown("#### Map Your Columns")
+                st.markdown("**Map Columns**")
                 cols = df_raw.columns.tolist()
                 text_cols = df_raw.select_dtypes(include=['object', 'string']).columns.tolist() or cols
                 
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: col_name = st.selectbox("Name *", text_cols, index=0)
-                with c2: col_date = st.selectbox("Expiry Date *", [c for c in cols if c != col_name], index=0)
+                with c1: col_name = st.selectbox("Name *", text_cols)
+                with c2: col_date = st.selectbox("Expiry Date *", [c for c in cols if c != col_name])
                 with c3: col_job = st.selectbox("Job Title (Optional)", ["(Skip)"] + [c for c in cols if c not in [col_name, col_date]])
                 with c4: col_cont = st.selectbox("Contact (Optional)", ["(Skip)"] + [c for c in cols if c not in [col_name, col_date, col_job]])
                 
@@ -270,18 +247,17 @@ else:
                             job_val = str(row[col_job]) if col_job != "(Skip)" and pd.notna(row[col_job]) else None
                             cont_val = str(row[col_cont]) if col_cont != "(Skip)" and pd.notna(row[col_cont]) else None
                             
-                            payload = {
+                            supabase.table("subcontractors").insert({
                                 "tenant_id": DEFAULT_TENANT_ID,
                                 "name": nm,
                                 "insurance_expiry_date": db_dt,
                                 "trade": job_val,
                                 "phone": cont_val,
                                 "data_status": "verified" if db_dt else "incomplete"
-                            }
-                            supabase.table("subcontractors").insert(payload).execute()
+                            }).execute()
                             count += 1
                         
-                        st.success(f"Successfully imported {count} workers!")
+                        st.success(f"Imported {count} workers!")
                         time.sleep(1)
                         st.rerun()
 
@@ -299,7 +275,6 @@ else:
             with t_exp: st.dataframe(df[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
             with t_miss: st.dataframe(df[df["Status"] == "MISSING"][["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]], use_container_width=True, hide_index=True)
 
-    # --- AI AUDIT ---
     with tab_audit:
         c_head1, c_head2 = st.columns([3, 1])
         with c_head1: st.subheader("AI Document Processor")
