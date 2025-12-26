@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 CSS FIX: REMOVE BLACK BOX ON PASSWORD ICON
+# 🎨 PROFESSIONAL CSS (FIXED BLACK BOX & CRASHES)
 professional_css = """
     <style>
     /* 1. HIDE MANAGE BUTTON & FOOTER */
@@ -37,17 +37,23 @@ professional_css = """
         border-radius: 6px; 
     }
     
-    /* --- THE FIX IS HERE --- */
-    /* 4. REMOVE BLACK BOX ON PASSWORD EYE ICON */
-    button[aria-label="Show password"] {
-        background-color: transparent !important; /* Force Transparent */
-        color: #374151 !important; /* Dark Grey Icon */
+    /* --- THE PASSWORD ICON FIX --- */
+    /* Force the container holding the eye icon to be transparent/white */
+    div[data-testid="stInputSecondary"] {
+        background-color: transparent !important;
         border: none !important;
     }
-    [data-testid="stInputSecondary"] {
-        background-color: transparent !important; /* Remove background container */
+    /* Force the button itself to be transparent */
+    div[data-testid="stInputSecondary"] > button {
+        background-color: transparent !important;
+        border: none !important;
+        color: #374151 !important; /* Dark Grey Icon */
     }
-    /* ----------------------- */
+    /* SVG Fill Color */
+    div[data-testid="stInputSecondary"] svg {
+        fill: #374151 !important;
+    }
+    /* ---------------------------- */
 
     /* 5. LABELS VISIBLE */
     label, p, .stMarkdown {
@@ -264,7 +270,7 @@ else:
 
         st.write("") 
 
-        # Data Tables (Safe Display)
+        # Data Tables (CRASH FIXED HERE: Converted to Safe String Types)
         if not df.empty:
             t_valid, t_warn, t_exp, t_miss = st.tabs(["✅ Valid", "⚠️ Warning", "🔴 Expired", "📝 Missing Data"])
             
@@ -272,8 +278,10 @@ else:
             if "trade" in df.columns: disp_cols.append("trade")
             if "phone" in df.columns: disp_cols.append("phone")
             
-            # Safe conversion to string to prevent Arrow crashes
+            # --- THE SAFETY FIX ---
+            # We convert everything to strings to prevent the Arrow/ValueError crash
             df_safe = df.astype(str)
+            # ----------------------
             
             with t_valid: st.dataframe(df_safe[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
             with t_warn: st.dataframe(df_safe[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
