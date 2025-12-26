@@ -5,7 +5,7 @@ import time
 import datetime
 import google.generativeai as genai
 
-# --- 1. CONFIGURATION & PROFESSIONAL THEME ---
+# --- 1. CONFIGURATION & PROFESSIONAL UI ---
 st.set_page_config(
     page_title="Compliance HQ", 
     page_icon="🛡️", 
@@ -13,83 +13,57 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🏢 PROFESSIONAL CSS (Zero Dark Policy)
+# 🎨 PROFESSIONAL CSS FIXES
 professional_css = """
     <style>
-    /* 1. HIDE ALL STREAMLIT DEFAULT JUNK */
+    /* 1. HIDE STREAMLIT FOOTER & MANAGE BUTTON (Aggressive) */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display: none;}
-    [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
-    [data-testid="manage-app-button"] {display: none !important;}
+    div[data-testid="stToolbar"] {display: none !important;}
+    div[data-testid="stDecoration"] {display: none !important;}
+    div[data-testid="stStatusWidget"] {display: none !important;}
     
-    /* 2. HIDE "PRESS ENTER TO APPLY" TOOLTIP */
-    [data-testid="InputInstructions"] { display: none !important; }
-    
-    /* 3. LIGHT THEME ENFORCEMENT */
+    /* 2. BACKGROUND & TEXT COLORS */
     .stApp {
         background-color: #FFFFFF;
-        color: #1F2937; /* Professional Dark Grey text, not black */
+        color: #111827; /* Dark Grey Text */
     }
     
-    /* 4. INPUT FIELDS (Clean, White, Grey Borders) */
-    input[type="text"], input[type="password"] {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 6px;
-        padding: 10px;
-    }
-    
-    /* Fix Password Eye Icon (Invert filter to make it grey, not black/white) */
-    [data-testid="stChatMessageAvatar"] { filter: invert(0.5); }
-    
-    /* 5. TABS (Apple-style Segmented Control) */
-    .stTabs [data-baseweb="tab-list"] { 
-        gap: 8px; 
-        background-color: transparent;
-        border-bottom: 1px solid #E5E7EB;
-        padding-bottom: 5px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        background-color: #F3F4F6;
-        border: 1px solid #E5E7EB;
-        border-radius: 6px;
-        color: #4B5563;
+    /* 3. FIX INVISIBLE LABELS (Force them to be dark) */
+    label, .stMarkdown p {
+        color: #374151 !important; /* Visible Dark Grey */
         font-weight: 500;
         font-size: 14px;
     }
-    .stTabs [aria-selected="true"] {
+    
+    /* 4. INPUT FIELDS (Clean White) */
+    input[type="text"], input[type="password"] {
         background-color: #FFFFFF !important;
-        color: #20B2AA !important; /* Ocean Green */
-        border: 1px solid #20B2AA !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 6px; 
     }
     
-    /* 6. METRICS (Clean Cards) */
-    div[data-testid="metric-container"] {
-        background-color: #F9FAFB;
-        border: 1px solid #E5E7EB;
-        padding: 15px;
-        border-radius: 8px;
+    /* 5. FIX THE BLACK PASSWORD EYE ICON BOX */
+    /* This targets the container of the eye icon to make it white/transparent */
+    button[aria-label="Show password"] {
+        background-color: transparent !important;
+        color: #374151 !important; /* Dark Grey Icon */
+        border: none !important;
     }
-    div[data-testid="stMetricValue"] { color: #20B2AA !important; font-weight: 700; }
-    
-    /* 7. TABLES (White with Light Borders) */
-    [data-testid="stDataFrame"] {
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
+    /* Fallback for different browser rendering of the toggle */
+    [data-testid="stInputSecondary"] {
+        background-color: transparent !important;
     }
-    
-    /* 8. BUTTONS */
+
+    /* 6. BUTTONS */
     button[kind="primary"] {
-        background-color: #20B2AA !important;
+        background-color: #20B2AA !important; /* Ocean Green */
         border: none;
         color: white !important;
-        font-weight: 600;
         border-radius: 6px;
+        padding: 10px 20px;
     }
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
@@ -98,8 +72,25 @@ professional_css = """
         border-radius: 6px;
     }
     
-    /* 9. HEADERS */
-    h1, h2, h3 { color: #111827 !important; font-family: 'Inter', sans-serif; }
+    /* 7. HEADERS & TABS */
+    h1, h2, h3 { color: #111827 !important; }
+    
+    .stTabs [data-baseweb="tab-list"] { 
+        gap: 10px; 
+        border-bottom: 1px solid #E5E7EB;
+        padding-bottom: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #F3F4F6;
+        border: 1px solid #E5E7EB;
+        color: #4B5563;
+        border-radius: 6px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #20B2AA !important;
+        color: white !important;
+        border: none;
+    }
     </style>
 """
 st.markdown(professional_css, unsafe_allow_html=True)
@@ -134,7 +125,6 @@ if "user" not in st.session_state:
     st.session_state["user"] = None
 
 # --- 3. HELPER FUNCTIONS ---
-
 def get_status(date_str, data_status, warning_days):
     if data_status == "incomplete" or not date_str or date_str == "None":
         return "MISSING"
@@ -178,28 +168,32 @@ def logout():
     st.session_state["user"] = None
     st.rerun()
 
-# --- 4. APP LOGIC ---
+# --- 4. APP INTERFACE ---
 
 # === AUTHENTICATION SCREEN ===
 if st.session_state["user"] is None:
-    c1, c2, c3 = st.columns([1, 1.5, 1])
+    # Centering the Login Box properly
+    c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
-        st.title("🛡️ Compliance HQ")
-        st.markdown("##### Secure Workforce Management")
+        st.image("[https://cdn-icons-png.flaticon.com/512/9634/9634157.png](https://cdn-icons-png.flaticon.com/512/9634/9634157.png)", width=60) # Simple Shield Icon
+        st.title("Compliance HQ")
+        st.write(" ") # Spacer
         
         tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
         
         with tab_login:
             l_email = st.text_input("Email", key="l_email", placeholder="name@company.com")
             l_pass = st.text_input("Password", type="password", key="l_pass", placeholder="••••••••")
+            st.write("")
             if st.button("Log In", type="primary", use_container_width=True): login(l_email, l_pass)
             
         with tab_signup:
-            s_email = st.text_input("Email", key="s_email", placeholder="name@company.com")
-            s_pass = st.text_input("Create Password", type="password", key="s_pass", placeholder="Minimum 6 characters")
+            s_email = st.text_input("Business Email", key="s_email", placeholder="name@company.com")
+            s_pass = st.text_input("Create Password", type="password", key="s_pass", placeholder="Min 6 chars")
+            st.write("")
             if st.button("Create Account", type="primary", use_container_width=True): signup(s_email, s_pass)
 
-# === MAIN APPLICATION ===
+# === MAIN DASHBOARD ===
 else:
     # Sidebar
     with st.sidebar:
@@ -208,26 +202,24 @@ else:
         st.divider()
         if st.button("Log Out", type="secondary", use_container_width=True): logout()
 
-    # Tabs (Dashboard contains Import)
+    # Tabs
     tab_dash, tab_audit = st.tabs(["📊 Dashboard & Import", "🤖 AI Audit"])
 
     # --- DASHBOARD & IMPORT ---
     with tab_dash:
-        # 1. TOP METRICS & CONTROLS
+        # Metrics & Controls
         c_head1, c_head2 = st.columns([3, 1])
         with c_head1: st.subheader("Overview")
         with c_head2: 
-            # Styled Selectbox for Days
             safe_days = st.selectbox("Warning Threshold", [30, 60, 90], index=1, format_func=lambda x: f"{x} Days")
 
         # Fetch Data
         res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
-        df = pd.DataFrame(res.data) if res.data else pd.DataFrame(columns=["name", "insurance_expiry_date", "trade", "contact", "data_status"])
+        df = pd.DataFrame(res.data) if res.data else pd.DataFrame(columns=["name", "insurance_expiry_date", "trade", "phone", "data_status"])
 
         if not df.empty:
             df["Status"] = df.apply(lambda row: get_status(row.get("insurance_expiry_date"), row.get("data_status"), safe_days), axis=1)
             
-            # Metrics
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Workforce", len(df))
             m2.metric("🟢 Valid", len(df[df["Status"] == "SAFE"]))
@@ -238,43 +230,26 @@ else:
 
         st.divider()
 
-        # 2. IMPORT SECTION (Embedded)
-        with st.expander("📂 Import New Workers (Upload Excel/CSV)", expanded=False):
-            up_file = st.file_uploader("Drag & Drop File", type=["xlsx", "csv"], label_visibility="collapsed")
+        # Import Section
+        with st.expander("📂 Import New Workers", expanded=False):
+            up_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"], label_visibility="collapsed")
             
             if up_file:
-                # Load File
                 if up_file.name.endswith(".csv"): df_raw = pd.read_csv(up_file)
                 else: df_raw = pd.read_excel(up_file)
                 
                 st.markdown("#### Map Your Columns")
                 cols = df_raw.columns.tolist()
+                text_cols = df_raw.select_dtypes(include=['object', 'string']).columns.tolist() or cols
                 
-                # Filter Columns by Type
-                text_cols = df_raw.select_dtypes(include=['object', 'string']).columns.tolist()
-                if not text_cols: text_cols = cols
-                
-                # Column Selectors Row
                 c1, c2, c3, c4 = st.columns(4)
+                with c1: col_name = st.selectbox("Name *", text_cols, index=0)
+                with c2: col_date = st.selectbox("Expiry Date *", [c for c in cols if c != col_name], index=0)
+                with c3: col_job = st.selectbox("Job Title (Optional)", ["(Skip)"] + [c for c in cols if c not in [col_name, col_date]])
+                with c4: col_cont = st.selectbox("Contact (Optional)", ["(Skip)"] + [c for c in cols if c not in [col_name, col_date, col_job]])
                 
-                with c1:
-                    col_name = st.selectbox("Name * (Required)", text_cols, index=0)
-                with c2:
-                    # Remove Name from Date options
-                    date_opts = [c for c in cols if c != col_name]
-                    col_date = st.selectbox("Expiry Date * (Required)", date_opts, index=0)
-                with c3:
-                    # Optional Job Title
-                    job_opts = ["(Skip)"] + [c for c in cols if c not in [col_name, col_date]]
-                    col_job = st.selectbox("Job Title (Optional)", job_opts)
-                with c4:
-                    # Optional Contact
-                    cont_opts = ["(Skip)"] + [c for c in cols if c not in [col_name, col_date, col_job]]
-                    col_cont = st.selectbox("Contact (Optional)", cont_opts)
-                
-                # Validation
                 if col_name == col_date:
-                    st.error("⚠️ Name and Date cannot be the same column.")
+                    st.error("Name and Date cannot be the same column.")
                 else:
                     if st.button("Import Data Now", type="primary"):
                         count = 0
@@ -285,7 +260,6 @@ else:
                             nm = str(row[col_name]).strip()
                             if not nm or nm.lower() == "nan" or nm in exist_names: continue
                             
-                            # Parse Date
                             dt_val = str(row[col_date]).strip()
                             db_dt = None
                             try:
@@ -293,7 +267,6 @@ else:
                                 if not pd.isna(parsed): db_dt = parsed.strftime('%Y-%m-%d')
                             except: pass
                             
-                            # Optional Fields
                             job_val = str(row[col_job]) if col_job != "(Skip)" and pd.notna(row[col_job]) else None
                             cont_val = str(row[col_cont]) if col_cont != "(Skip)" and pd.notna(row[col_cont]) else None
                             
@@ -312,40 +285,31 @@ else:
                         time.sleep(1)
                         st.rerun()
 
-        st.write("") # Spacer
+        st.write("") 
 
-        # 3. DATA TABLES (Sub-tabs)
+        # Data Tables
         if not df.empty:
             t_valid, t_warn, t_exp, t_miss = st.tabs(["✅ Valid", "⚠️ Warning", "🔴 Expired", "📝 Missing Data"])
-            
-            # Dynamic Column Selection (Hide optionals if empty)
             disp_cols = ["name", "insurance_expiry_date"]
-            if "trade" in df.columns and df["trade"].notna().any(): disp_cols.append("trade")
-            if "phone" in df.columns and df["phone"].notna().any(): disp_cols.append("phone")
+            if "trade" in df.columns: disp_cols.append("trade")
+            if "phone" in df.columns: disp_cols.append("phone")
             
-            with t_valid:
-                st.dataframe(df[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
-            with t_warn:
-                st.dataframe(df[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
-            with t_exp:
-                st.dataframe(df[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
-            with t_miss:
-                st.dataframe(df[df["Status"] == "MISSING"][["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]], use_container_width=True, hide_index=True)
+            with t_valid: st.dataframe(df[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
+            with t_warn: st.dataframe(df[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
+            with t_exp: st.dataframe(df[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
+            with t_miss: st.dataframe(df[df["Status"] == "MISSING"][["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]], use_container_width=True, hide_index=True)
 
     # --- AI AUDIT ---
     with tab_audit:
         c_head1, c_head2 = st.columns([3, 1])
         with c_head1: st.subheader("AI Document Processor")
         
-        # Fetch only Problematic Workers
         res = supabase.table("subcontractors").select("id, name, data_status").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         if res.data:
-            # Sort: Missing Data first
             workers = sorted(res.data, key=lambda x: x['data_status'] == 'verified')
             w_map = {w['name']: w['id'] for w in workers}
             
             sel_wk = st.selectbox("Select Worker for Audit", list(w_map.keys()))
-            
             up_ev = st.file_uploader("Upload Certificate", type=["png", "jpg", "jpeg"])
             
             if up_ev and st.button("Run AI Extraction", type="primary"):
