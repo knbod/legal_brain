@@ -48,18 +48,27 @@ if "user" not in st.session_state:
 def ask_ai_to_read_date(file_bytes, mime_type):
     """Sends image to Gemini and asks for the expiry date."""
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # 1. Setup the Model (We try the specific version first, then fallback)
+        model_name = "gemini-1.5-flash-latest" 
         
-        # Create a simple prompt
+        try:
+            model = genai.GenerativeModel(model_name)
+        except:
+            # If Flash fails, use the standard Pro model (Reliable Backup)
+            model = genai.GenerativeModel("gemini-pro-vision") 
+        
+        # 2. Create the Prompt
         prompt = "Look at this insurance certificate. Find the 'Expiration Date' or 'Valid Until' date. Return ONLY the date in YYYY-MM-DD format. If you cannot find it, return 'NOT_FOUND'."
         
-        # Prepare the image for AI
+        # 3. Prepare Image & Send
+        # Note: 'gemini-pro-vision' handles images differently, so we ensure standard format
         image_part = {"mime_type": mime_type, "data": file_bytes}
         
         response = model.generate_content([prompt, image_part])
         return response.text.strip()
+        
     except Exception as e:
-        return f"Error: {e}"
+        return f"AI Error: {str(e)}"
 
 # --- 3. HELPER FUNCTIONS ---
 def login(email, password):
@@ -231,3 +240,4 @@ else:
                     
         else:
             st.warning("No workers found. Please import first.")
+
