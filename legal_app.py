@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 PROFESSIONAL CSS (FIXED LABELS & REMOVED BLACK BOXES)
+# 🎨 PROFESSIONAL CSS (Zero Black, Zero Crashes)
 professional_css = """
     <style>
     /* 1. HIDE MANAGE BUTTON & FOOTER (Aggressive) */
