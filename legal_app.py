@@ -13,10 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 PROFESSIONAL CSS (Zero Black, Zero Crashes)
+# 🎨 CSS FIX: REMOVE BLACK BOX ON PASSWORD ICON
 professional_css = """
     <style>
-    /* 1. HIDE MANAGE BUTTON & FOOTER (Aggressive) */
+    /* 1. HIDE MANAGE BUTTON & FOOTER */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -29,13 +29,7 @@ professional_css = """
         color: #111827;
     }
     
-    /* 3. FORCE LABELS TO BE VISIBLE (DARK GREY) */
-    label, p, .stMarkdown {
-        color: #374151 !important;
-        font-weight: 500 !important;
-    }
-    
-    /* 4. INPUT FIELDS (Clean White) */
+    /* 3. INPUT FIELDS (Clean White) */
     input[type="text"], input[type="password"] {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -43,14 +37,22 @@ professional_css = """
         border-radius: 6px; 
     }
     
-    /* 5. REMOVE BLACK BOX ON PASSWORD ICON */
+    /* --- THE FIX IS HERE --- */
+    /* 4. REMOVE BLACK BOX ON PASSWORD EYE ICON */
     button[aria-label="Show password"] {
-        background-color: transparent !important;
-        color: #374151 !important;
+        background-color: transparent !important; /* Force Transparent */
+        color: #374151 !important; /* Dark Grey Icon */
         border: none !important;
     }
     [data-testid="stInputSecondary"] {
-        background-color: transparent !important;
+        background-color: transparent !important; /* Remove background container */
+    }
+    /* ----------------------- */
+
+    /* 5. LABELS VISIBLE */
+    label, p, .stMarkdown {
+        color: #374151 !important;
+        font-weight: 500 !important;
     }
 
     /* 6. BUTTONS */
@@ -67,7 +69,6 @@ professional_css = """
         border-radius: 6px;
     }
     
-    /* 7. HEADERS */
     h1, h2, h3 { color: #111827 !important; }
     </style>
 """
@@ -149,10 +150,10 @@ def logout():
 # --- 4. APP INTERFACE ---
 
 if st.session_state["user"] is None:
-    # === LOGIN SCREEN (Centered & Clean) ===
+    # === LOGIN SCREEN ===
     c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
-        st.header("🛡️ Compliance HQ") # Text header (No Image to prevent crash)
+        st.header("🛡️ Compliance HQ")
         st.write("Secure Workforce Management")
         st.divider()
         
@@ -263,25 +264,23 @@ else:
 
         st.write("") 
 
-        # Data Tables (Fixed: Added explicit String conversion to prevent Arrow crash)
+        # Data Tables (Safe Display)
         if not df.empty:
             t_valid, t_warn, t_exp, t_miss = st.tabs(["✅ Valid", "⚠️ Warning", "🔴 Expired", "📝 Missing Data"])
             
-            # Prepare safe display columns
             disp_cols = ["name", "insurance_expiry_date"]
             if "trade" in df.columns: disp_cols.append("trade")
             if "phone" in df.columns: disp_cols.append("phone")
             
-            # Convert to string to avoid Dataframe crash on mixed types
-            df_display = df.astype(str)
+            # Safe conversion to string to prevent Arrow crashes
+            df_safe = df.astype(str)
             
-            with t_valid: st.dataframe(df_display[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
-            with t_warn: st.dataframe(df_display[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
-            with t_exp: st.dataframe(df_display[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
+            with t_valid: st.dataframe(df_safe[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
+            with t_warn: st.dataframe(df_safe[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
+            with t_exp: st.dataframe(df_safe[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
             with t_miss: 
-                # Safe column selection for missing data
-                missing_cols = ["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]
-                st.dataframe(df_display[df["Status"] == "MISSING"][missing_cols], use_container_width=True, hide_index=True)
+                miss_cols = ["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]
+                st.dataframe(df_safe[df["Status"] == "MISSING"][miss_cols], use_container_width=True, hide_index=True)
 
     with tab_audit:
         c_head1, c_head2 = st.columns([3, 1])
