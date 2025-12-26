@@ -46,30 +46,46 @@ if "user" not in st.session_state:
 
 # --- 2. AI INTELLIGENCE ---
 def ask_ai_to_read_date(file_bytes, mime_type):
-    """Sends image to Gemini and asks for the expiry date."""
-    try:
-        # 1. Setup the Model (We try the specific version first, then fallback)
-        model_name = "gemini-1.5-flash-latest" 
-        
+    """Robust AI Function: Tries multiple models and lists available ones on error."""
+    
+    # List of models to try in order of preference
+    # 1. Flash (Fastest)
+    # 2. Pro-Vision (Old Reliable for images)
+    candidate_models = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-pro-vision"]
+    
+    last_error = ""
+    
+    for model_name in candidate_models:
         try:
+            # Setup Model
             model = genai.GenerativeModel(model_name)
-        except:
-            # If Flash fails, use the standard Pro model (Reliable Backup)
-            model = genai.GenerativeModel("gemini-pro-vision") 
-        
-        # 2. Create the Prompt
-        prompt = "Look at this insurance certificate. Find the 'Expiration Date' or 'Valid Until' date. Return ONLY the date in YYYY-MM-DD format. If you cannot find it, return 'NOT_FOUND'."
-        
-        # 3. Prepare Image & Send
-        # Note: 'gemini-pro-vision' handles images differently, so we ensure standard format
-        image_part = {"mime_type": mime_type, "data": file_bytes}
-        
-        response = model.generate_content([prompt, image_part])
-        return response.text.strip()
-        
-    except Exception as e:
-        return f"AI Error: {str(e)}"
+            
+            # Prompt
+            prompt = "Look at this insurance certificate. Find the 'Expiration Date' or 'Valid Until' date. Return ONLY the date in YYYY-MM-DD format. If you cannot find it, return 'NOT_FOUND'."
+            
+            # Send
+            image_part = {"mime_type": mime_type, "data": file_bytes}
+            response = model.generate_content([prompt, image_part])
+            
+            # If we get here, it worked! Return the text.
+            return response.text.strip()
+            
+        except Exception as e:
+            # If this model failed, save error and try the next one
+            last_error = str(e)
+            continue
 
+    # --- IF ALL FAIL, RUN DIAGNOSTICS ---
+    # If we get here, NO models worked. Let's find out why.
+    try:
+        available = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available.append(m.name)
+        
+        return f"❌ All models failed. Your API Key allows these models: {available}. \nError: {last_error}"
+    except:
+        return f"❌ Critical AI Error: {last_error}"
 # --- 3. HELPER FUNCTIONS ---
 def login(email, password):
     try:
@@ -240,4 +256,5 @@ else:
                     
         else:
             st.warning("No workers found. Please import first.")
+
 
