@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 PROFESSIONAL CSS (FIXED BLACK BOX & CRASHES)
+# 🎨 PROFESSIONAL CSS (THE FINAL FIX)
 professional_css = """
     <style>
     /* 1. HIDE MANAGE BUTTON & FOOTER */
@@ -37,23 +37,37 @@ professional_css = """
         border-radius: 6px; 
     }
     
-    /* --- THE PASSWORD ICON FIX --- */
-    /* Force the container holding the eye icon to be transparent/white */
+    /* --- THE NUCLEAR FIX FOR THE BLACK BOX --- */
+    /* Target the button by its functionality and FORCE white background */
+    button[aria-label="Show password"] {
+        background-color: #FFFFFF !important; /* Force White */
+        color: #374151 !important; /* Dark Grey Icon */
+        border: none !important;
+        border-left: 1px solid #F3F4F6 !important; /* Subtle separator */
+    }
+    
+    /* Ensure the container behind it is also transparent */
     div[data-testid="stInputSecondary"] {
         background-color: transparent !important;
-        border: none !important;
     }
-    /* Force the button itself to be transparent */
-    div[data-testid="stInputSecondary"] > button {
-        background-color: transparent !important;
-        border: none !important;
-        color: #374151 !important; /* Dark Grey Icon */
-    }
-    /* SVG Fill Color */
-    div[data-testid="stInputSecondary"] svg {
+    
+    /* Fix the Icon SVG color */
+    button[aria-label="Show password"] svg {
         fill: #374151 !important;
     }
-    /* ---------------------------- */
+    
+    /* Hover Effect - Light Grey instead of Black */
+    button[aria-label="Show password"]:hover {
+        background-color: #F9FAFB !important;
+        color: #20B2AA !important;
+    }
+    
+    /* Active/Clicked Effect */
+    button[aria-label="Show password"]:active {
+        background-color: #F3F4F6 !important;
+        color: #20B2AA !important;
+    }
+    /* ---------------------------------------- */
 
     /* 5. LABELS VISIBLE */
     label, p, .stMarkdown {
@@ -270,7 +284,7 @@ else:
 
         st.write("") 
 
-        # Data Tables (CRASH FIXED HERE: Converted to Safe String Types)
+        # Data Tables (Safe Display)
         if not df.empty:
             t_valid, t_warn, t_exp, t_miss = st.tabs(["✅ Valid", "⚠️ Warning", "🔴 Expired", "📝 Missing Data"])
             
@@ -278,10 +292,8 @@ else:
             if "trade" in df.columns: disp_cols.append("trade")
             if "phone" in df.columns: disp_cols.append("phone")
             
-            # --- THE SAFETY FIX ---
-            # We convert everything to strings to prevent the Arrow/ValueError crash
+            # Safe conversion
             df_safe = df.astype(str)
-            # ----------------------
             
             with t_valid: st.dataframe(df_safe[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
             with t_warn: st.dataframe(df_safe[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
