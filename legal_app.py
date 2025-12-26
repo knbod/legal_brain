@@ -23,7 +23,7 @@ if not supabase:
     st.stop()
 
 # --- 2. CONSTANTS & SESSION ---
-# ⚠️ PASTE YOUR COPIED TENANT ID HERE ⚠️
+# This is your CORRECT Tenant ID from the screenshot! ✅
 DEFAULT_TENANT_ID = "a8446e55-1a8c-477f-aed9-51998ab1e6cb" 
 
 if "user" not in st.session_state:
