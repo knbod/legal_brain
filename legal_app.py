@@ -152,7 +152,7 @@ if st.session_state["user"] is None:
     # === LOGIN SCREEN (Centered & Clean) ===
     c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
-        st.header("🛡️ Compliance HQ") # Use text/emoji instead of image to prevent crash
+        st.header("🛡️ Compliance HQ") # Text header (No Image to prevent crash)
         st.write("Secure Workforce Management")
         st.divider()
         
@@ -263,17 +263,25 @@ else:
 
         st.write("") 
 
-        # Data Tables
+        # Data Tables (Fixed: Added explicit String conversion to prevent Arrow crash)
         if not df.empty:
             t_valid, t_warn, t_exp, t_miss = st.tabs(["✅ Valid", "⚠️ Warning", "🔴 Expired", "📝 Missing Data"])
+            
+            # Prepare safe display columns
             disp_cols = ["name", "insurance_expiry_date"]
             if "trade" in df.columns: disp_cols.append("trade")
             if "phone" in df.columns: disp_cols.append("phone")
             
-            with t_valid: st.dataframe(df[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
-            with t_warn: st.dataframe(df[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
-            with t_exp: st.dataframe(df[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
-            with t_miss: st.dataframe(df[df["Status"] == "MISSING"][["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]], use_container_width=True, hide_index=True)
+            # Convert to string to avoid Dataframe crash on mixed types
+            df_display = df.astype(str)
+            
+            with t_valid: st.dataframe(df_display[df["Status"] == "SAFE"][disp_cols], use_container_width=True, hide_index=True)
+            with t_warn: st.dataframe(df_display[df["Status"] == "WARNING"][disp_cols], use_container_width=True, hide_index=True)
+            with t_exp: st.dataframe(df_display[df["Status"] == "EXPIRED"][disp_cols], use_container_width=True, hide_index=True)
+            with t_miss: 
+                # Safe column selection for missing data
+                missing_cols = ["name"] + [c for c in disp_cols if c != "insurance_expiry_date"]
+                st.dataframe(df_display[df["Status"] == "MISSING"][missing_cols], use_container_width=True, hide_index=True)
 
     with tab_audit:
         c_head1, c_head2 = st.columns([3, 1])
