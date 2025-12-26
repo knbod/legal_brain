@@ -4,7 +4,6 @@ from supabase import create_client
 import time
 import datetime
 import google.generativeai as genai
-import io
 
 # --- 1. SETUP & CONFIG ---
 st.set_page_config(page_title="Compliance Tracker", layout="wide")
@@ -31,61 +30,55 @@ supabase = init_connections()
 
 # STOP IF SETUP IS WRONG
 if not supabase:
-    st.error("🚨 System Error: Secrets not found. Please check Step 3.")
+    st.error("🚨 System Error: Secrets not found. Please check your Secrets file.")
     st.stop()
 
-# GET TENANT ID FROM SECRETS (No more manual pasting!)
+# GET TENANT ID SAFELY
 try:
     DEFAULT_TENANT_ID = st.secrets["general"]["tenant_id"]
 except:
-    st.error("🚨 Missing 'tenant_id' in Secrets!")
-    st.stop()
+    st.warning("⚠️ 'tenant_id' not found in Secrets. Using default for testing.")
+    # Fallback to your ID from previous chats if secret is missing
+    DEFAULT_TENANT_ID = "a8446e55-1a8c-477f-aed9-51998ab1e6cb"
 
 if "user" not in st.session_state:
     st.session_state["user"] = None
 
-# --- 2. AI INTELLIGENCE ---
+# --- 2. AI INTELLIGENCE (Updated for Gemini 2.0) ---
 def ask_ai_to_read_date(file_bytes, mime_type):
-    """Robust AI Function: Tries multiple models and lists available ones on error."""
+    """Tries the specific models available to your API key."""
     
-    # List of models to try in order of preference
-    # 1. Flash (Fastest)
-    # 2. Pro-Vision (Old Reliable for images)
-    candidate_models = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-pro-vision"]
+    # 🚨 UPDATED LIST BASED ON YOUR SCREENSHOT
+    candidate_models = [
+        "gemini-2.0-flash",       # The new fast one you have access to
+        "gemini-flash-latest",    # The generic latest tag
+        "gemini-1.5-flash-latest" # Fallback
+    ]
     
     last_error = ""
     
     for model_name in candidate_models:
         try:
-            # Setup Model
             model = genai.GenerativeModel(model_name)
             
-            # Prompt
-            prompt = "Look at this insurance certificate. Find the 'Expiration Date' or 'Valid Until' date. Return ONLY the date in YYYY-MM-DD format. If you cannot find it, return 'NOT_FOUND'."
+            prompt = "Look at this insurance certificate. Find the 'Expiration Date' or 'Valid Until' date. Return ONLY the date in YYYY-MM-DD format. Do not write sentences. If you cannot find it, return 'NOT_FOUND'."
             
-            # Send
             image_part = {"mime_type": mime_type, "data": file_bytes}
-            response = model.generate_content([prompt, image_part])
             
-            # If we get here, it worked! Return the text.
-            return response.text.strip()
+            # Generate
+            response = model.generate_content([prompt, image_part])
+            text = response.text.strip()
+            
+            # Clean up the response (remove Markdown quotes or spaces)
+            clean_text = text.replace("```", "").replace("json", "").strip()
+            return clean_text
             
         except Exception as e:
-            # If this model failed, save error and try the next one
             last_error = str(e)
             continue
 
-    # --- IF ALL FAIL, RUN DIAGNOSTICS ---
-    # If we get here, NO models worked. Let's find out why.
-    try:
-        available = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available.append(m.name)
-        
-        return f"❌ All models failed. Your API Key allows these models: {available}. \nError: {last_error}"
-    except:
-        return f"❌ Critical AI Error: {last_error}"
+    return f"ERROR: All models failed. {last_error}"
+
 # --- 3. HELPER FUNCTIONS ---
 def login(email, password):
     try:
@@ -134,7 +127,7 @@ else:
     # NAVIGATION TABS
     tab_import, tab_dash, tab_docs = st.tabs(["📂 Import Wizard", "📊 Dashboard", "🤖 AI Auditor"])
     
-    # --- TAB 1: IMPORT WIZARD (Simplified) ---
+    # --- TAB 1: IMPORT WIZARD ---
     with tab_import:
         st.header("Upload Workers List")
         uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
@@ -151,26 +144,25 @@ else:
                 for _, row in df.iterrows():
                     name = str(row[col_name])
                     if name and name != "nan":
+                        # Insert with Default Red Light
                         supabase.table("subcontractors").insert({
                             "tenant_id": DEFAULT_TENANT_ID,
                             "name": name,
-                            "data_status": "incomplete" # Default to red light
+                            "data_status": "incomplete" 
                         }).execute()
                         count += 1
                 st.success(f"✅ Imported {count} workers!")
                 time.sleep(1)
                 st.rerun()
 
-    # --- TAB 2: DASHBOARD (Traffic Lights) ---
+    # --- TAB 2: DASHBOARD ---
     with tab_dash:
         st.header("✅ Compliance Status")
-        # Get all workers
         res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
         if res.data:
             df_main = pd.DataFrame(res.data)
             
-            # Traffic Light Logic
             def get_status(date_str):
                 if not date_str: return "🔴 MISSING"
                 try:
@@ -182,19 +174,13 @@ else:
                 except: return "🔴 ERROR"
 
             df_main["Status"] = df_main["insurance_expiry_date"].apply(get_status)
-            
-            # Show the table
-            st.dataframe(
-                df_main[["Status", "name", "insurance_expiry_date", "data_status"]], 
-                use_container_width=True
-            )
+            st.dataframe(df_main[["Status", "name", "insurance_expiry_date", "data_status"]], use_container_width=True)
         else:
             st.info("No workers found. Go to Import Wizard.")
 
-    # --- TAB 3: AI AUDITOR (Upload + Scan) ---
+    # --- TAB 3: AI AUDITOR (FIXED) ---
     with tab_docs:
         st.header("📄 AI Evidence Processor")
-        st.caption("Upload a certificate. The AI will read the date and update the status.")
         
         # 1. Select Worker
         workers_res = supabase.table("subcontractors").select("id, name").eq("tenant_id", DEFAULT_TENANT_ID).execute()
@@ -205,11 +191,12 @@ else:
             selected_worker_id = worker_dict[selected_worker_name]
             
             # 2. Upload File
-            proof_file = st.file_uploader(f"Upload Insurance for {selected_worker_name}", type=["png", "jpg", "jpeg", "pdf"])
+            proof_file = st.file_uploader(f"Upload Insurance for {selected_worker_name}", type=["png", "jpg", "jpeg"])
             
             if proof_file and st.button("Upload & Scan with AI ✨"):
+                
+                # A. Upload to Vault
                 with st.spinner("Uploading to Vault..."):
-                    # A. Upload to Supabase Storage
                     file_ext = proof_file.name.split('.')[-1]
                     file_path = f"{selected_worker_id}_{int(time.time())}.{file_ext}"
                     file_bytes = proof_file.getvalue()
@@ -218,43 +205,46 @@ else:
                         supabase.storage.from_("certificates").upload(file_path, file_bytes, {"content-type": proof_file.type})
                         public_url = supabase.storage.from_("certificates").get_public_url(file_path)
                         
-                        # Save Link to DB
+                        # Save Link
                         supabase.table("documents").insert({
                             "subcontractor_id": selected_worker_id,
                             "file_url": public_url,
                             "file_name": proof_file.name
                         }).execute()
-                        st.success("✅ File Saved!")
+                        st.success("✅ File Uploaded!")
                         
                     except Exception as e:
-                        st.error(f"Upload Failed: {e}")
+                        st.error(f"Storage Error: {e}")
                         st.stop()
                 
                 # B. AI Processing
-                if file_ext in ['png', 'jpg', 'jpeg']:
-                    with st.spinner("🤖 AI is reading the document..."):
-                        ai_date = ask_ai_to_read_date(file_bytes, proof_file.type)
-                        
-                        st.write(f"**AI Found Date:** `{ai_date}`")
-                        
-                        # Validate Date Format
-                        if "20" in ai_date and "-" in ai_date: # Simple check for YYYY-MM-DD
-                            # C. Update Database
+                with st.spinner("🤖 AI is reading the document (Using Gemini 2.0)..."):
+                    ai_date = ask_ai_to_read_date(file_bytes, proof_file.type)
+                    
+                    st.write(f"**AI Result:** `{ai_date}`")
+                    
+                    # Validate Date format (YYYY-MM-DD)
+                    valid_date = False
+                    if len(ai_date) == 10 and ai_date[4] == '-' and ai_date[7] == '-':
+                        valid_date = True
+                    
+                    if valid_date:
+                        try:
+                            # C. Update Database (With Crash Protection)
                             supabase.table("subcontractors").update({
                                 "insurance_expiry_date": ai_date,
                                 "data_status": "verified"
                             }).eq("id", selected_worker_id).execute()
                             
                             st.balloons()
-                            st.success(f"✅ Updated {selected_worker_name} to Green Light!")
+                            st.success(f"✅ UPDATED! {selected_worker_name} is now Green Light.")
                             time.sleep(2)
                             st.rerun()
-                        else:
-                            st.warning("AI couldn't find a clear date. Please check the image manually.")
-                else:
-                    st.info("AI scanning currently supports Images (PNG/JPG). PDF support coming next version.")
+                        except Exception as e:
+                            st.error(f"🚨 Database Save Error: {e}")
+                            st.info("Tip: This usually means RLS is blocking updates. Ask me for the 'Update Policy' SQL.")
+                    else:
+                        st.warning(f"AI could not read the date clearly. It saw: '{ai_date}'. Please enter manually.")
                     
         else:
             st.warning("No workers found. Please import first.")
-
-
