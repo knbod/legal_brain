@@ -5,53 +5,70 @@ import time
 import datetime
 import google.generativeai as genai
 
-# --- 1. CONFIGURATION & OCEAN GREEN THEME ---
+# --- 1. CONFIGURATION & LIGHT THEME ---
 st.set_page_config(
     page_title="Compliance HQ", 
     page_icon="🛡️", 
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS for "Light Ocean Green" Theme
-ocean_css = """
+# 🌊 CLEAN OCEAN CSS (Light Mode)
+clean_ocean_css = """
     <style>
-    /* HIDE STREAMLIT BRANDING */
+    /* 1. HIDE JUNK (Streamlit Branding) */
     #MainMenu {visibility: hidden;}
     .stDeployButton {display: none;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden !important;} 
     
-    /* OCEAN GREEN THEME */
-    .stApp { background-color: #F0F8FF; } /* Very light AliceBlue background */
+    /* 2. MAIN BACKGROUND - CLEAN WHITE */
+    .stApp {
+        background-color: #FFFFFF; /* Pure White */
+        color: #333333; /* Dark Grey Text (High Contrast) */
+    }
     
-    /* Headers */
-    h1, h2, h3 { color: #008B8B !important; } /* Dark Cyan */
+    /* 3. SIDEBAR - LIGHT GREY */
+    [data-testid="stSidebar"] {
+        background-color: #F8F9FA; /* Very Light Grey */
+        border-right: 1px solid #E0E0E0;
+    }
     
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    /* 4. TABS - OCEAN THEME */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] {
         height: 50px;
-        background-color: #E0F7FA; /* Light Cyan */
+        background-color: #F0F8FF; /* Alice Blue */
+        border: 1px solid #E0E0E0;
         border-radius: 5px;
-        color: #006064;
+        color: #006064; /* Dark Cyan Text */
         font-weight: 600;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #20B2AA !important; /* Light Sea Green */
+        background-color: #20B2AA !important; /* Ocean Green Active */
         color: white !important;
+        border: none;
     }
     
-    /* Metric Cards */
-    div[data-testid="stMetricValue"] { color: #20B2AA; }
+    /* 5. METRICS & HEADERS */
+    /* Make headers Dark Ocean Blue for professionalism */
+    h1, h2, h3 { color: #008B8B !important; } 
+    div[data-testid="stMetricValue"] { color: #20B2AA !important; }
     
-    /* Buttons */
+    /* 6. BUTTONS */
     button[kind="primary"] {
         background-color: #20B2AA !important;
         border: none;
+        color: white !important;
+        transition: 0.2s;
+    }
+    button[kind="primary"]:hover {
+        background-color: #008080 !important; /* Darker Teal on Hover */
     }
     </style>
 """
-st.markdown(ocean_css, unsafe_allow_html=True)
+st.markdown(clean_ocean_css, unsafe_allow_html=True)
 
 # --- 2. SETUP ---
 @st.cache_resource
@@ -86,20 +103,14 @@ if "user" not in st.session_state:
 # --- 3. LOGIC FUNCTIONS ---
 
 def get_status(date_str, data_status, warning_days):
-    """Categorizes a worker based on variable warning days."""
     if data_status == "incomplete" or not date_str or date_str == "None":
         return "MISSING"
-    
     try:
         d = pd.to_datetime(date_str).date()
         days_left = (d - datetime.date.today()).days
-        
-        if days_left < 0:
-            return "EXPIRED"
-        elif days_left < warning_days:
-            return "WARNING"
-        else:
-            return "SAFE"
+        if days_left < 0: return "EXPIRED"
+        elif days_left < warning_days: return "WARNING"
+        else: return "SAFE"
     except:
         return "MISSING"
 
@@ -145,11 +156,11 @@ else:
     # Sidebar
     with st.sidebar:
         st.title("🛡️ HQ")
-        st.caption(st.session_state['user'].email)
+        st.caption(f"User: {st.session_state['user'].email}")
         st.divider()
         if st.button("Log Out"): logout()
 
-    # Main Tabs (Only 3 now, as Roster is inside Dashboard)
+    # Main Tabs
     tab_dash, tab_import, tab_audit = st.tabs(["📊 Executive Dashboard", "📂 Import Data", "🤖 AI Audit"])
 
     # --- TAB 1: EXECUTIVE DASHBOARD ---
@@ -159,7 +170,6 @@ else:
         with c_head1:
             st.subheader("Compliance Overview")
         with c_head2:
-            # SAFETY ZONE SELECTOR
             safe_days = st.selectbox("Define Safe Zone:", [30, 60, 90], index=1, format_func=lambda x: f"{x} Days")
         
         # Fetch Data
@@ -167,8 +177,6 @@ else:
         
         if res.data:
             df = pd.DataFrame(res.data)
-            
-            # Apply Logic with Custom Days
             df["Status"] = df.apply(lambda row: get_status(row.get("insurance_expiry_date"), row.get("data_status"), safe_days), axis=1)
             
             # Key Metrics
@@ -180,27 +188,24 @@ else:
             
             st.divider()
             
-            # SUB-TABS (The Roster)
+            # SUB-TABS (Roster)
             sub_safe, sub_warn, sub_exp, sub_inc = st.tabs(["🟢 Safe", "🟡 Warning", "🔴 Expired", "⚠️ Incomplete"])
             
             with sub_safe:
                 st.dataframe(df[df["Status"] == "SAFE"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-            
             with sub_warn:
                 st.warning(f"These workers expire in less than {safe_days} days.")
                 st.dataframe(df[df["Status"] == "WARNING"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-                
             with sub_exp:
                 st.error("Insurance Expired. Access Denied.")
                 st.dataframe(df[df["Status"] == "EXPIRED"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-                
             with sub_inc:
                 st.info("Data Missing. Use AI Audit tab to fix.")
                 st.dataframe(df[df["Status"] == "MISSING"][["name", "trade"]], use_container_width=True)
         else:
             st.info("No data. Go to 'Import Data'.")
 
-    # --- TAB 2: IMPORT DATA (Smart Filters) ---
+    # --- TAB 2: IMPORT DATA ---
     with tab_import:
         st.subheader("Import Workforce")
         uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
@@ -210,28 +215,21 @@ else:
             else: df_imp = pd.read_excel(uploaded_file)
             
             # SMART COLUMN FILTERING
-            # 1. Identify Text Columns (for Name)
             text_cols = df_imp.select_dtypes(include=['object', 'string']).columns.tolist()
-            if not text_cols: text_cols = df_imp.columns.tolist() # Fallback
-            
-            # 2. Identify All Columns (for Date - often dates are read as objects)
+            if not text_cols: text_cols = df_imp.columns.tolist() 
             all_cols = df_imp.columns.tolist()
 
             c_name_col, c_date_col = st.columns(2)
-            
             with c_name_col:
                 name_col = st.selectbox("Select Name Column (Text)", text_cols)
             with c_date_col:
-                # Remove the selected name column from date options if possible
                 date_options = [c for c in all_cols if c != name_col]
                 date_col = st.selectbox("Select Expiry Date Column", date_options)
             
-            # FINAL VALIDATION
             if name_col == date_col:
                 st.error("⚠️ Name and Date cannot be the same column.")
             else:
                 if st.button("Run Import", type="primary"):
-                    # DUPLICATE CHECK LOGIC
                     existing_res = supabase.table("subcontractors").select("name").eq("tenant_id", DEFAULT_TENANT_ID).execute()
                     existing_names = set([row['name'] for row in existing_res.data]) if existing_res.data else set()
                     
@@ -243,13 +241,10 @@ else:
                         raw_date = str(row[date_col]).strip()
                         
                         if not name or name.lower() == "nan": continue
-                        
-                        # SKIP IF EXISTS
                         if name in existing_names:
                             skipped += 1
                             continue
                         
-                        # Parse Date
                         db_date = None
                         try:
                             parsed = pd.to_datetime(raw_date, errors='coerce')
@@ -276,7 +271,6 @@ else:
         res = supabase.table("subcontractors").select("id, name, data_status").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
         if res.data:
-            # Sort: Incomplete first
             workers = sorted(res.data, key=lambda x: x['data_status'] == 'verified')
             w_map = {f"{w['name']}": w['id'] for w in workers}
             
@@ -287,15 +281,12 @@ else:
             
             if up_file and st.button("Auto-Extract & Update", type="primary"):
                 with st.spinner("Processing..."):
-                    # Upload
                     path = f"{sel_id}_{int(time.time())}.{up_file.name.split('.')[-1]}"
                     supabase.storage.from_("certificates").upload(path, up_file.getvalue(), {"content-type": up_file.type})
                     url = supabase.storage.from_("certificates").get_public_url(path)
                     
-                    # Link
                     supabase.table("documents").insert({"subcontractor_id": sel_id, "file_url": url, "file_name": up_file.name}).execute()
                     
-                    # AI
                     date_found = ask_ai_to_read_date(up_file.getvalue(), up_file.type)
                     
                     if len(date_found) == 10 and date_found[4] == '-':
