@@ -5,26 +5,28 @@ import time
 import datetime
 import google.generativeai as genai
 
-# --- 1. PROFESSIONAL UI CONFIGURATION ---
+# --- 1. CONFIGURATION & STYLING ---
 st.set_page_config(
     page_title="Compliance HQ", 
     page_icon="🛡️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# --- CSS HACKS: HIDE GITHUB & STREAMLIT BRANDING ---
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            .stDeployButton {display: none;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# Custom CSS to hide "developer" look and style tabs
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    .stDeployButton {display: none;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    /* Custom Tab Styling */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 5px; color: #31333F; }
+    .stTabs [aria-selected="true"] { background-color: #FFFFFF; border: 1px solid #dcdcdc; border-bottom: none; color: #ff4b4b; }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- 2. CONNECTIONS & SETUP ---
+# --- 2. SETUP ---
 @st.cache_resource
 def init_connections():
     try:
@@ -33,7 +35,7 @@ def init_connections():
         client = create_client(sup_url, sup_key)
     except:
         client = None
-        
+    
     try:
         genai.configure(api_key=st.secrets["google"]["api_key"])
     except:
@@ -46,7 +48,6 @@ if not supabase:
     st.error("🚨 Critical System Error: Database connection failed.")
     st.stop()
 
-# TENANT ID HANDLING
 try:
     DEFAULT_TENANT_ID = st.secrets["general"]["tenant_id"]
 except:
@@ -55,22 +56,39 @@ except:
 if "user" not in st.session_state:
     st.session_state["user"] = None
 
-# --- 3. INTELLIGENT FUNCTIONS ---
+# --- 3. CORE FUNCTIONS ---
+
+def get_traffic_light_status(date_str, data_status):
+    """Categorizes a worker based on your 4 rules."""
+    # 1. Check for Missing Data first
+    if data_status == "incomplete" or not date_str or date_str == "None":
+        return "MISSING_DATA"
+    
+    try:
+        # 2. Check Date Logic
+        d = pd.to_datetime(date_str).date()
+        days_left = (d - datetime.date.today()).days
+        
+        if days_left < 0:
+            return "EXPIRED" # Red
+        elif days_left < 60:
+            return "WARNING" # Yellow (Less than 2 months)
+        else:
+            return "SAFE" # Green (More than 2 months)
+            
+    except:
+        return "MISSING_DATA"
 
 def ask_ai_to_read_date(file_bytes, mime_type):
-    """AI Vision function with fallback models."""
+    """AI Vision function."""
     candidate_models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-pro-vision"]
-    
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
-            # Strict prompt for clean data
-            prompt = "Analyze this insurance certificate. Extract the Expiration Date. Return ONLY the date in YYYY-MM-DD format. If ambiguous, return 'NOT_FOUND'."
+            prompt = "Extract the Expiration Date from this certificate. Return ONLY the date in YYYY-MM-DD format. If not found, return 'NOT_FOUND'."
             image_part = {"mime_type": mime_type, "data": file_bytes}
-            
             response = model.generate_content([prompt, image_part])
-            clean_text = response.text.strip().replace("```", "").replace("json", "")
-            return clean_text
+            return response.text.strip().replace("```", "").replace("json", "")
         except:
             continue
     return "NOT_FOUND"
@@ -80,232 +98,195 @@ def login(email, password):
         response = supabase.auth.sign_in_with_password({"email": email.strip(), "password": password})
         st.session_state["user"] = response.user
         st.rerun()
-    except Exception as e:
-        st.error(f"Access Denied: Please check your credentials.")
-
-def signup(email, password):
-    try:
-        response = supabase.auth.sign_up({"email": email.strip(), "password": password})
-        st.session_state["user"] = response.user
-        st.success("✅ Account created! You may log in now.")
-        st.rerun()
-    except Exception as e:
-        st.error(f"Registration Failed: {e}")
+    except:
+        st.error("Invalid credentials.")
 
 def logout():
     supabase.auth.sign_out()
     st.session_state["user"] = None
     st.rerun()
 
-# --- 4. THE APPLICATION INTERFACE ---
+# --- 4. APP INTERFACE ---
 
 if st.session_state["user"] is None:
-    # === PROFESSIONAL LOGIN SCREEN ===
-    c1, c2, c3 = st.columns([1, 2, 1])
+    # Login Screen
+    c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
         st.title("🛡️ Compliance HQ")
-        st.markdown("#### Secure Workforce Management")
-        
-        tab1, tab2 = st.tabs(["🔒 Secure Login", "📝 New Registration"])
-        
-        with tab1:
-            email = st.text_input("Business Email", key="l_email")
-            password = st.text_input("Password", type="password", key="l_pass")
-            if st.button("Access Dashboard", type="primary"): 
-                login(email, password)
-                
-        with tab2:
-            new_email = st.text_input("Business Email", key="s_email")
-            new_pass = st.text_input("Set Password", type="password", key="s_pass")
-            if st.button("Create Account"): 
-                signup(new_email, new_pass)
+        email = st.text_input("Email", key="l_email")
+        password = st.text_input("Password", type="password", key="l_pass")
+        if st.button("Log In", type="primary", use_container_width=True): 
+            login(email, password)
 
 else:
-    # === MAIN APPLICATION ===
-    
-    # Sidebar Navigation
+    # Sidebar
     with st.sidebar:
-        st.title("🛡️ Compliance HQ")
-        st.caption(f"Logged in as: {st.session_state['user'].email}")
-        st.markdown("---")
-        if st.button("🚪 Sign Out", use_container_width=True):
-            logout()
-    
-    # Main Tabs with Professional Names
-    tab_dash, tab_import, tab_audit = st.tabs(["📊 Executive Dashboard", "📂 Workforce Data", "🤖 Audit Center"])
-    
-    # --- TAB 1: EXECUTIVE DASHBOARD ---
+        st.title("🛡️ HQ")
+        st.caption(st.session_state['user'].email)
+        if st.button("Log Out"): logout()
+
+    # Main Tabs
+    tab_dash, tab_roster, tab_import, tab_audit = st.tabs(["📊 Executive Dashboard", "📋 Roster Categories", "📂 Import Data", "🤖 AI Audit"])
+
+    # --- TAB 1: EXECUTIVE DASHBOARD (Metrics Only) ---
     with tab_dash:
-        st.subheader("Compliance Overview")
+        st.subheader("High-Level Overview")
         
-        # Fetch Data
+        # Fetch All Data
         res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
         if res.data:
-            df_main = pd.DataFrame(res.data)
+            df = pd.DataFrame(res.data)
             
-            # Smart Status Logic
-            def get_status(date_str):
-                if not date_str or date_str == "None": return "🔴 Missing Docs"
-                try:
-                    d = pd.to_datetime(date_str).date()
-                    days = (d - datetime.date.today()).days
-                    if days < 0: return "🔴 EXPIRED"
-                    if days < 30: return "🟡 Renewal Due"
-                    return "🟢 Compliant"
-                except: return "🔴 Error"
+            # Categorize
+            df["Category"] = df.apply(lambda row: get_traffic_light_status(row.get("insurance_expiry_date"), row.get("data_status")), axis=1)
+            
+            # Metrics
+            count_total = len(df)
+            count_green = len(df[df["Category"] == "SAFE"])
+            count_yellow = len(df[df["Category"] == "WARNING"])
+            count_red = len(df[df["Category"] == "EXPIRED"])
+            count_missing = len(df[df["Category"] == "MISSING_DATA"])
 
-            df_main["Status"] = df_main["insurance_expiry_date"].apply(get_status)
-            
-            # Metrics Row
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Workforce", len(df_main))
-            m2.metric("Compliant", len(df_main[df_main["Status"] == "🟢 Compliant"]))
-            m3.metric("At Risk", len(df_main[df_main["Status"] != "🟢 Compliant"]), delta_color="inverse")
+            # Layout: Big Cards
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("🟢 Compliant", count_green, help="Valid > 60 Days")
+            c2.metric("🟡 At Risk", count_yellow, help="Expires < 60 Days")
+            c3.metric("🔴 Expired", count_red, help="Insurance Invalid")
+            c4.metric("⚠️ Action Needed", count_missing, help="Missing Date or Info")
             
             st.divider()
-            
-            # Clean Table
-            st.dataframe(
-                df_main[["Status", "name", "insurance_expiry_date", "trade"]], 
-                use_container_width=True,
-                column_config={
-                    "name": "Subcontractor Name",
-                    "insurance_expiry_date": "Insurance Expiry",
-                    "trade": "Trade / Role"
-                }
-            )
+            st.caption(f"Total Database Size: {count_total} Subcontractors")
         else:
-            st.info("System is empty. Please navigate to 'Workforce Data' to begin.")
+            st.info("No data available.")
 
-    # --- TAB 2: WORKFORCE DATA (Import) ---
-    with tab_import:
-        st.subheader("Bulk Import Subcontractors")
-        st.markdown("Upload your current roster (`.xlsx` or `.csv`). We will map the columns automatically.")
+    # --- TAB 2: ROSTER CATEGORIES (Your 4 Sub-Tabs) ---
+    with tab_roster:
+        st.subheader("Worker Lists")
         
-        uploaded_file = st.file_uploader("Drop file here", type=["xlsx", "csv"])
+        # Reuse data from dashboard if possible, or fetch again
+        res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
+        
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df["Category"] = df.apply(lambda row: get_traffic_light_status(row.get("insurance_expiry_date"), row.get("data_status")), axis=1)
+            
+            # 4 Sub-Tabs
+            sub_green, sub_yellow, sub_red, sub_missing = st.tabs([
+                "🟢 Safe (>2 Mo)", 
+                "🟡 Warning (<2 Mo)", 
+                "🔴 Expired", 
+                "⚠️ Missing Data"
+            ])
+            
+            with sub_green:
+                st.dataframe(df[df["Category"] == "SAFE"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+            
+            with sub_yellow:
+                st.dataframe(df[df["Category"] == "WARNING"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+                
+            with sub_red:
+                st.error("These workers are legally non-compliant. Do not allow on site.")
+                st.dataframe(df[df["Category"] == "EXPIRED"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+                
+            with sub_missing:
+                st.warning("These workers have missing dates. Please use AI Audit to fix.")
+                st.dataframe(df[df["Category"] == "MISSING_DATA"][["name", "trade"]], use_container_width=True)
+
+    # --- TAB 3: IMPORT DATA (With Duplicate Fix) ---
+    with tab_import:
+        st.subheader("Import New Workers")
+        uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
         
         if uploaded_file:
-            if uploaded_file.name.endswith(".csv"): df = pd.read_csv(uploaded_file)
-            else: df = pd.read_excel(uploaded_file)
+            if uploaded_file.name.endswith(".csv"): df_imp = pd.read_csv(uploaded_file)
+            else: df_imp = pd.read_excel(uploaded_file)
             
-            st.write("### Data Mapping")
-            cols = df.columns.tolist()
+            cols = df_imp.columns.tolist()
+            c_name = st.selectbox("Name Column", cols)
+            c_date = st.selectbox("Date Column", cols, index=1 if len(cols)>1 else 0)
             
-            # 2. BUG FIX: Column Selection Logic
-            col1, col2 = st.columns(2)
-            with col1:
-                name_col = st.selectbox("Select Name Column", cols, index=0)
-            with col2:
-                # Try to auto-select a different column for date
-                default_date_idx = 1 if len(cols) > 1 else 0
-                date_col = st.selectbox("Select Expiry Date Column", cols, index=default_date_idx)
-            
-            # 3. VALIDATION: Prevent Same Column Selection
-            if name_col == date_col:
-                st.error("⚠️ Error: You cannot use the same column for both 'Name' and 'Expiry Date'. Please fix selection.")
+            if c_name == c_date:
+                st.error("⚠️ Name and Date columns cannot be the same.")
             else:
-                if st.button("Process Import", type="primary"):
-                    count = 0
-                    progress_bar = st.progress(0)
+                if st.button("Run Import"):
+                    # 1. Fetch Existing Names to prevent Duplicates
+                    existing_res = supabase.table("subcontractors").select("name").eq("tenant_id", DEFAULT_TENANT_ID).execute()
+                    existing_names = set([row['name'] for row in existing_res.data]) if existing_res.data else set()
                     
-                    for i, row in df.iterrows():
-                        # Extract and Clean Data
-                        raw_name = str(row[name_col]).strip()
-                        raw_date = str(row[date_col]).strip()
+                    added = 0
+                    skipped = 0
+                    
+                    progress = st.progress(0)
+                    for i, row in df_imp.iterrows():
+                        name = str(row[c_name]).strip()
+                        raw_date = str(row[c_date]).strip()
                         
-                        # Basic Name Validation
-                        if not raw_name or raw_name.lower() in ["nan", "none", ""]:
-                            continue
-                            
-                        # Try to parse date immediately if possible
+                        if not name or name == "nan": continue
+                        
+                        # DUPLICATE CHECK
+                        if name in existing_names:
+                            skipped += 1
+                            continue # Skip this row
+                        
+                        # Date Parsing
                         db_date = None
                         try:
                             parsed = pd.to_datetime(raw_date, errors='coerce')
-                            if not pd.isna(parsed):
-                                db_date = parsed.strftime('%Y-%m-%d')
-                        except:
-                            pass
+                            if not pd.isna(parsed): db_date = parsed.strftime('%Y-%m-%d')
+                        except: pass
 
-                        # Insert to DB
                         supabase.table("subcontractors").insert({
                             "tenant_id": DEFAULT_TENANT_ID,
-                            "name": raw_name,
+                            "name": name,
                             "insurance_expiry_date": db_date,
                             "data_status": "verified" if db_date else "incomplete"
                         }).execute()
+                        added += 1
+                        progress.progress((i+1)/len(df_imp))
                         
-                        count += 1
-                        progress_bar.progress((i + 1) / len(df))
-                    
-                    st.success(f"Successfully onboarded {count} subcontractors.")
+                    st.success(f"✅ Added {added} new workers. (Skipped {skipped} duplicates).")
                     time.sleep(1)
                     st.rerun()
 
-    # --- TAB 3: AUDIT CENTER (AI) ---
+    # --- TAB 4: AI AUDIT ---
     with tab_audit:
-        st.subheader("AI Verification Center")
+        st.subheader("Fix Missing Data with AI")
         
-        # 1. Selector
-        workers_res = supabase.table("subcontractors").select("id, name, data_status").eq("tenant_id", DEFAULT_TENANT_ID).execute()
+        # Only fetch MISSING or WARNING rows usually, but let's fetch all for flexibility
+        res = supabase.table("subcontractors").select("id, name, data_status").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
-        if workers_res.data:
-            # Filter to show "Incomplete" workers first
-            workers = workers_res.data
-            workers_sorted = sorted(workers, key=lambda x: x['data_status'] == 'verified') # Unverified first
+        if res.data:
+            # Sort: Show "Incomplete" at the top
+            workers = sorted(res.data, key=lambda x: x['data_status'] == 'verified')
+            w_map = {f"{w['name']}": w['id'] for w in workers}
             
-            worker_map = {f"{w['name']} ({'✅' if w['data_status']=='verified' else '🔴'})": w['id'] for w in workers_sorted}
+            selected = st.selectbox("Select Worker:", list(w_map.keys()))
+            sel_id = w_map[selected]
             
-            selected_label = st.selectbox("Select Subcontractor for Audit:", list(worker_map.keys()))
-            selected_id = worker_map[selected_label]
+            up_file = st.file_uploader("Upload Cert", type=["png", "jpg", "jpeg"])
             
-            # 2. Upload
-            proof_file = st.file_uploader("Upload Insurance Certificate (Image)", type=["png", "jpg", "jpeg"])
-            
-            if proof_file and st.button("Run AI Audit ✨", type="primary"):
-                
-                with st.status("Processing Evidence...", expanded=True) as status:
-                    # A. Upload
-                    st.write("📤 Securely uploading to Audit Vault...")
-                    file_ext = proof_file.name.split('.')[-1]
-                    file_path = f"{selected_id}_{int(time.time())}.{file_ext}"
-                    file_bytes = proof_file.getvalue()
+            if up_file and st.button("Auto-Extract Date"):
+                with st.spinner("Analyzing..."):
+                    # Upload
+                    path = f"{sel_id}_{int(time.time())}.{up_file.name.split('.')[-1]}"
+                    supabase.storage.from_("certificates").upload(path, up_file.getvalue(), {"content-type": up_file.type})
+                    url = supabase.storage.from_("certificates").get_public_url(path)
                     
-                    try:
-                        supabase.storage.from_("certificates").upload(file_path, file_bytes, {"content-type": proof_file.type})
-                        public_url = supabase.storage.from_("certificates").get_public_url(file_path)
-                        
-                        # Link
-                        supabase.table("documents").insert({
-                            "subcontractor_id": selected_id,
-                            "file_url": public_url,
-                            "file_name": proof_file.name
-                        }).execute()
-                        
-                    except Exception as e:
-                        st.error("Upload Error (Check connection).")
-                        st.stop()
+                    # Link
+                    supabase.table("documents").insert({"subcontractor_id": sel_id, "file_url": url, "file_name": up_file.name}).execute()
                     
-                    # B. AI Analysis
-                    st.write("🤖 AI Analyst is reading document structure...")
-                    ai_date = ask_ai_to_read_date(file_bytes, proof_file.type)
+                    # AI
+                    date_found = ask_ai_to_read_date(up_file.getvalue(), up_file.type)
                     
-                    # C. Validation Logic
-                    if ai_date and len(ai_date) == 10 and ai_date[4] == '-':
-                        st.write("✅ Date validated successfully.")
+                    if len(date_found) == 10 and date_found[4] == '-':
                         supabase.table("subcontractors").update({
-                            "insurance_expiry_date": ai_date,
+                            "insurance_expiry_date": date_found,
                             "data_status": "verified"
-                        }).eq("id", selected_id).execute()
-                        
-                        status.update(label="Audit Complete!", state="complete", expanded=False)
+                        }).eq("id", sel_id).execute()
                         st.balloons()
-                        st.success(f"Subcontractor verified! Expiry set to: {ai_date}")
-                        time.sleep(2)
+                        st.success(f"✅ Fixed! Date set to {date_found}")
+                        time.sleep(1)
                         st.rerun()
                     else:
-                        status.update(label="AI Validation Failed", state="error")
-                        st.error(f"AI could not confirm the date. It saw: '{ai_date}'. Please verify manually.")
-                        
-        else:
-            st.warning("No workforce data found. Please complete import first.")
+                        st.error(f"AI Failed: Saw '{date_found}'")
