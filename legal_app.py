@@ -5,26 +5,53 @@ import time
 import datetime
 import google.generativeai as genai
 
-# --- 1. CONFIGURATION & STYLING ---
+# --- 1. CONFIGURATION & OCEAN GREEN THEME ---
 st.set_page_config(
     page_title="Compliance HQ", 
     page_icon="🛡️", 
     layout="wide"
 )
 
-# Custom CSS to hide "developer" look and style tabs
-st.markdown("""
+# Custom CSS for "Light Ocean Green" Theme
+ocean_css = """
     <style>
+    /* HIDE STREAMLIT BRANDING */
     #MainMenu {visibility: hidden;}
     .stDeployButton {display: none;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    /* Custom Tab Styling */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 5px; color: #31333F; }
-    .stTabs [aria-selected="true"] { background-color: #FFFFFF; border: 1px solid #dcdcdc; border-bottom: none; color: #ff4b4b; }
+    
+    /* OCEAN GREEN THEME */
+    .stApp { background-color: #F0F8FF; } /* Very light AliceBlue background */
+    
+    /* Headers */
+    h1, h2, h3 { color: #008B8B !important; } /* Dark Cyan */
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #E0F7FA; /* Light Cyan */
+        border-radius: 5px;
+        color: #006064;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #20B2AA !important; /* Light Sea Green */
+        color: white !important;
+    }
+    
+    /* Metric Cards */
+    div[data-testid="stMetricValue"] { color: #20B2AA; }
+    
+    /* Buttons */
+    button[kind="primary"] {
+        background-color: #20B2AA !important;
+        border: none;
+    }
     </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(ocean_css, unsafe_allow_html=True)
 
 # --- 2. SETUP ---
 @st.cache_resource
@@ -56,36 +83,32 @@ except:
 if "user" not in st.session_state:
     st.session_state["user"] = None
 
-# --- 3. CORE FUNCTIONS ---
+# --- 3. LOGIC FUNCTIONS ---
 
-def get_traffic_light_status(date_str, data_status):
-    """Categorizes a worker based on your 4 rules."""
-    # 1. Check for Missing Data first
+def get_status(date_str, data_status, warning_days):
+    """Categorizes a worker based on variable warning days."""
     if data_status == "incomplete" or not date_str or date_str == "None":
-        return "MISSING_DATA"
+        return "MISSING"
     
     try:
-        # 2. Check Date Logic
         d = pd.to_datetime(date_str).date()
         days_left = (d - datetime.date.today()).days
         
         if days_left < 0:
-            return "EXPIRED" # Red
-        elif days_left < 60:
-            return "WARNING" # Yellow (Less than 2 months)
+            return "EXPIRED"
+        elif days_left < warning_days:
+            return "WARNING"
         else:
-            return "SAFE" # Green (More than 2 months)
-            
+            return "SAFE"
     except:
-        return "MISSING_DATA"
+        return "MISSING"
 
 def ask_ai_to_read_date(file_bytes, mime_type):
-    """AI Vision function."""
     candidate_models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-pro-vision"]
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
-            prompt = "Extract the Expiration Date from this certificate. Return ONLY the date in YYYY-MM-DD format. If not found, return 'NOT_FOUND'."
+            prompt = "Extract the Expiration Date. Return ONLY the date in YYYY-MM-DD format. If not found, return 'NOT_FOUND'."
             image_part = {"mime_type": mime_type, "data": file_bytes}
             response = model.generate_content([prompt, image_part])
             return response.text.strip().replace("```", "").replace("json", "")
@@ -123,113 +146,110 @@ else:
     with st.sidebar:
         st.title("🛡️ HQ")
         st.caption(st.session_state['user'].email)
+        st.divider()
         if st.button("Log Out"): logout()
 
-    # Main Tabs
-    tab_dash, tab_roster, tab_import, tab_audit = st.tabs(["📊 Executive Dashboard", "📋 Roster Categories", "📂 Import Data", "🤖 AI Audit"])
+    # Main Tabs (Only 3 now, as Roster is inside Dashboard)
+    tab_dash, tab_import, tab_audit = st.tabs(["📊 Executive Dashboard", "📂 Import Data", "🤖 AI Audit"])
 
-    # --- TAB 1: EXECUTIVE DASHBOARD (Metrics Only) ---
+    # --- TAB 1: EXECUTIVE DASHBOARD ---
     with tab_dash:
-        st.subheader("High-Level Overview")
+        # Header Controls
+        c_head1, c_head2 = st.columns([3, 1])
+        with c_head1:
+            st.subheader("Compliance Overview")
+        with c_head2:
+            # SAFETY ZONE SELECTOR
+            safe_days = st.selectbox("Define Safe Zone:", [30, 60, 90], index=1, format_func=lambda x: f"{x} Days")
         
-        # Fetch All Data
+        # Fetch Data
         res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
         if res.data:
             df = pd.DataFrame(res.data)
             
-            # Categorize
-            df["Category"] = df.apply(lambda row: get_traffic_light_status(row.get("insurance_expiry_date"), row.get("data_status")), axis=1)
+            # Apply Logic with Custom Days
+            df["Status"] = df.apply(lambda row: get_status(row.get("insurance_expiry_date"), row.get("data_status"), safe_days), axis=1)
             
-            # Metrics
-            count_total = len(df)
-            count_green = len(df[df["Category"] == "SAFE"])
-            count_yellow = len(df[df["Category"] == "WARNING"])
-            count_red = len(df[df["Category"] == "EXPIRED"])
-            count_missing = len(df[df["Category"] == "MISSING_DATA"])
-
-            # Layout: Big Cards
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("🟢 Compliant", count_green, help="Valid > 60 Days")
-            c2.metric("🟡 At Risk", count_yellow, help="Expires < 60 Days")
-            c3.metric("🔴 Expired", count_red, help="Insurance Invalid")
-            c4.metric("⚠️ Action Needed", count_missing, help="Missing Date or Info")
+            # Key Metrics
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Workers", len(df))
+            m2.metric("🟢 Safe", len(df[df["Status"] == "SAFE"]))
+            m3.metric("🟡 Warning", len(df[df["Status"] == "WARNING"]))
+            m4.metric("🔴 Action Reqd", len(df[df["Status"].isin(["EXPIRED", "MISSING"])]))
             
             st.divider()
-            st.caption(f"Total Database Size: {count_total} Subcontractors")
+            
+            # SUB-TABS (The Roster)
+            sub_safe, sub_warn, sub_exp, sub_inc = st.tabs(["🟢 Safe", "🟡 Warning", "🔴 Expired", "⚠️ Incomplete"])
+            
+            with sub_safe:
+                st.dataframe(df[df["Status"] == "SAFE"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+            
+            with sub_warn:
+                st.warning(f"These workers expire in less than {safe_days} days.")
+                st.dataframe(df[df["Status"] == "WARNING"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+                
+            with sub_exp:
+                st.error("Insurance Expired. Access Denied.")
+                st.dataframe(df[df["Status"] == "EXPIRED"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
+                
+            with sub_inc:
+                st.info("Data Missing. Use AI Audit tab to fix.")
+                st.dataframe(df[df["Status"] == "MISSING"][["name", "trade"]], use_container_width=True)
         else:
-            st.info("No data available.")
+            st.info("No data. Go to 'Import Data'.")
 
-    # --- TAB 2: ROSTER CATEGORIES (Your 4 Sub-Tabs) ---
-    with tab_roster:
-        st.subheader("Worker Lists")
-        
-        # Reuse data from dashboard if possible, or fetch again
-        res = supabase.table("subcontractors").select("*").eq("tenant_id", DEFAULT_TENANT_ID).execute()
-        
-        if res.data:
-            df = pd.DataFrame(res.data)
-            df["Category"] = df.apply(lambda row: get_traffic_light_status(row.get("insurance_expiry_date"), row.get("data_status")), axis=1)
-            
-            # 4 Sub-Tabs
-            sub_green, sub_yellow, sub_red, sub_missing = st.tabs([
-                "🟢 Safe (>2 Mo)", 
-                "🟡 Warning (<2 Mo)", 
-                "🔴 Expired", 
-                "⚠️ Missing Data"
-            ])
-            
-            with sub_green:
-                st.dataframe(df[df["Category"] == "SAFE"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-            
-            with sub_yellow:
-                st.dataframe(df[df["Category"] == "WARNING"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-                
-            with sub_red:
-                st.error("These workers are legally non-compliant. Do not allow on site.")
-                st.dataframe(df[df["Category"] == "EXPIRED"][["name", "trade", "insurance_expiry_date"]], use_container_width=True)
-                
-            with sub_missing:
-                st.warning("These workers have missing dates. Please use AI Audit to fix.")
-                st.dataframe(df[df["Category"] == "MISSING_DATA"][["name", "trade"]], use_container_width=True)
-
-    # --- TAB 3: IMPORT DATA (With Duplicate Fix) ---
+    # --- TAB 2: IMPORT DATA (Smart Filters) ---
     with tab_import:
-        st.subheader("Import New Workers")
+        st.subheader("Import Workforce")
         uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
         
         if uploaded_file:
             if uploaded_file.name.endswith(".csv"): df_imp = pd.read_csv(uploaded_file)
             else: df_imp = pd.read_excel(uploaded_file)
             
-            cols = df_imp.columns.tolist()
-            c_name = st.selectbox("Name Column", cols)
-            c_date = st.selectbox("Date Column", cols, index=1 if len(cols)>1 else 0)
+            # SMART COLUMN FILTERING
+            # 1. Identify Text Columns (for Name)
+            text_cols = df_imp.select_dtypes(include=['object', 'string']).columns.tolist()
+            if not text_cols: text_cols = df_imp.columns.tolist() # Fallback
             
-            if c_name == c_date:
-                st.error("⚠️ Name and Date columns cannot be the same.")
+            # 2. Identify All Columns (for Date - often dates are read as objects)
+            all_cols = df_imp.columns.tolist()
+
+            c_name_col, c_date_col = st.columns(2)
+            
+            with c_name_col:
+                name_col = st.selectbox("Select Name Column (Text)", text_cols)
+            with c_date_col:
+                # Remove the selected name column from date options if possible
+                date_options = [c for c in all_cols if c != name_col]
+                date_col = st.selectbox("Select Expiry Date Column", date_options)
+            
+            # FINAL VALIDATION
+            if name_col == date_col:
+                st.error("⚠️ Name and Date cannot be the same column.")
             else:
-                if st.button("Run Import"):
-                    # 1. Fetch Existing Names to prevent Duplicates
+                if st.button("Run Import", type="primary"):
+                    # DUPLICATE CHECK LOGIC
                     existing_res = supabase.table("subcontractors").select("name").eq("tenant_id", DEFAULT_TENANT_ID).execute()
                     existing_names = set([row['name'] for row in existing_res.data]) if existing_res.data else set()
                     
-                    added = 0
-                    skipped = 0
+                    added, skipped = 0, 0
+                    bar = st.progress(0)
                     
-                    progress = st.progress(0)
                     for i, row in df_imp.iterrows():
-                        name = str(row[c_name]).strip()
-                        raw_date = str(row[c_date]).strip()
+                        name = str(row[name_col]).strip()
+                        raw_date = str(row[date_col]).strip()
                         
-                        if not name or name == "nan": continue
+                        if not name or name.lower() == "nan": continue
                         
-                        # DUPLICATE CHECK
+                        # SKIP IF EXISTS
                         if name in existing_names:
                             skipped += 1
-                            continue # Skip this row
+                            continue
                         
-                        # Date Parsing
+                        # Parse Date
                         db_date = None
                         try:
                             parsed = pd.to_datetime(raw_date, errors='coerce')
@@ -243,31 +263,30 @@ else:
                             "data_status": "verified" if db_date else "incomplete"
                         }).execute()
                         added += 1
-                        progress.progress((i+1)/len(df_imp))
+                        bar.progress((i+1)/len(df_imp))
                         
-                    st.success(f"✅ Added {added} new workers. (Skipped {skipped} duplicates).")
+                    st.success(f"✅ Import Complete: {added} Added, {skipped} Skipped (Duplicates).")
                     time.sleep(1)
                     st.rerun()
 
-    # --- TAB 4: AI AUDIT ---
+    # --- TAB 3: AI AUDIT ---
     with tab_audit:
-        st.subheader("Fix Missing Data with AI")
+        st.subheader("AI Verification")
         
-        # Only fetch MISSING or WARNING rows usually, but let's fetch all for flexibility
         res = supabase.table("subcontractors").select("id, name, data_status").eq("tenant_id", DEFAULT_TENANT_ID).execute()
         
         if res.data:
-            # Sort: Show "Incomplete" at the top
+            # Sort: Incomplete first
             workers = sorted(res.data, key=lambda x: x['data_status'] == 'verified')
             w_map = {f"{w['name']}": w['id'] for w in workers}
             
-            selected = st.selectbox("Select Worker:", list(w_map.keys()))
-            sel_id = w_map[selected]
+            sel_worker = st.selectbox("Select Worker:", list(w_map.keys()))
+            sel_id = w_map[sel_worker]
             
-            up_file = st.file_uploader("Upload Cert", type=["png", "jpg", "jpeg"])
+            up_file = st.file_uploader("Upload Evidence", type=["png", "jpg", "jpeg"])
             
-            if up_file and st.button("Auto-Extract Date"):
-                with st.spinner("Analyzing..."):
+            if up_file and st.button("Auto-Extract & Update", type="primary"):
+                with st.spinner("Processing..."):
                     # Upload
                     path = f"{sel_id}_{int(time.time())}.{up_file.name.split('.')[-1]}"
                     supabase.storage.from_("certificates").upload(path, up_file.getvalue(), {"content-type": up_file.type})
@@ -285,8 +304,8 @@ else:
                             "data_status": "verified"
                         }).eq("id", sel_id).execute()
                         st.balloons()
-                        st.success(f"✅ Fixed! Date set to {date_found}")
+                        st.success(f"✅ Fixed! New Expiry: {date_found}")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error(f"AI Failed: Saw '{date_found}'")
+                        st.error(f"AI Failed. Saw: '{date_found}'")
